@@ -1,112 +1,107 @@
-// lib/features/config_option/overview/config_options_page.dart
-
+// lib/features/config_option/data/config_option_repository.dart
 import 'package:dartx/dartx.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_hooks/flutter_hooks.dart';
-import 'package:gap/gap.dart';
-import 'package:hiddify/core/localization/translations.dart';
+import 'package:fpdart/fpdart.dart';
 import 'package:hiddify/core/model/optional_range.dart';
 import 'package:hiddify/core/model/region.dart';
-import 'package:hiddify/core/notification/in_app_notification_controller.dart';
-import 'package:hiddify/core/widget/adaptive_icon.dart';
-import 'package:hiddify/core/widget/tip_card.dart';
-import 'package:hiddify/features/common/confirmation_dialogs.dart';
-import 'package:hiddify/features/common/nested_app_bar.dart';
-import 'package:hiddify/features/config_option/data/config_option_repository.dart';
-import 'package:hiddify/features/config_option/notifier/config_option_notifier.dart';
-import 'package:hiddify/features/config_option/overview/warp_options_widgets.dart';
-import 'package:hiddify/features/config_option/widget/preference_tile.dart';
+import 'package:hiddify/core/preferences/general_preferences.dart';
+import 'package:hiddify/core/utils/exception_handler.dart';
+import 'package:hiddify/core/utils/json_converters.dart';
+import 'package:hiddify/core/utils/preferences_utils.dart';
+import 'package:hiddify/features/config_option/data/dns_repository.dart'; // import جدید
+import 'package:hiddify/features/config_option/model/config_option_failure.dart';
 import 'package:hiddify/features/log/model/log_level.dart';
-import 'package:hiddify/features/settings/widgets/sections_widgets.dart';
-import 'package:hiddify/features/settings/widgets/settings_input_dialog.dart';
 import 'package:hiddify/singbox/model/singbox_config_enum.dart';
+import 'package:hiddify/singbox/model/singbox_config_option.dart';
+import 'package:hiddify/singbox/model/singbox_rule.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:humanizer/humanizer.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-// ... بقیه کدهای شما بدون تغییر ...
+// این یک نمونه ساده است، شما باید آن را مطابق با ساختار پروژه خود تطبیق دهید
+class ConfigOptionRepository with ExceptionHandler, InfraLogger {
+  ConfigOptionRepository({
+    required this.preferences,
+    required this.getConfigOptions,
+  });
 
-class ConfigOptionsPage extends HookConsumerWidget {
-  ConfigOptionsPage({super.key, String? section})
-      : section = section != null ? ConfigOptionSection.values.byName(section) : null;
+  final SharedPreferences preferences;
+  final Future<SingboxConfigOption> Function() getConfigOptions;
 
-  final ConfigOptionSection? section;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // ... بقیه کدهای شما بدون تغییر ...
-
-    return Scaffold(
-      body: CustomScrollView(
-        controller: scrollController,
-        shrinkWrap: true,
-        slivers: [
-          NestedAppBar(
-            // ...
-          ),
-          SliverToBoxAdapter(
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  // ...
-                  SettingsSection(t.config.section.dns),
-
-                  // ویجت جدید برای فعال‌سازی DNS خودکار
-                  SwitchListTile(
-                    title: const Text("انتخاب خودکار DNS"),
-                    subtitle: const Text(
-                      "برنامه به صورت خودکار سریع‌ترین DNS را پیدا و استفاده می‌کند",
-                    ),
-                    value: ref.watch(ConfigOptions.autoSelectDns),
-                    onChanged: ref.read(ConfigOptions.autoSelectDns.notifier).update,
-                  ),
-
-                  // گزینه‌های دستی فقط زمانی نمایش داده می‌شوند که حالت خودکار غیرفعال باشد
-                  AnimatedVisibility(
-                    visible: !ref.watch(ConfigOptions.autoSelectDns),
-                    child: Column(
-                      children: [
-                        ValuePreferenceWidget(
-                          value: ref.watch(ConfigOptions.remoteDnsAddress),
-                          preferences: ref.watch(ConfigOptions.remoteDnsAddress.notifier),
-                          title: t.config.remoteDnsAddress,
-                        ),
-                        ChoicePreferenceWidget(
-                          selected: ref.watch(ConfigOptions.remoteDnsDomainStrategy),
-                          preferences: ref.watch(ConfigOptions.remoteDnsDomainStrategy.notifier),
-                          choices: DomainStrategy.values,
-                          title: t.config.remoteDnsDomainStrategy,
-                          presentChoice: (value) => value.displayName,
-                        ),
-                        ValuePreferenceWidget(
-                          value: ref.watch(ConfigOptions.directDnsAddress),
-                          preferences: ref.watch(ConfigOptions.directDnsAddress.notifier),
-                          title: t.config.directDnsAddress,
-                        ),
-                        ChoicePreferenceWidget(
-                          selected: ref.watch(ConfigOptions.directDnsDomainStrategy),
-                          preferences: ref.watch(ConfigOptions.directDnsDomainStrategy.notifier),
-                          choices: DomainStrategy.values,
-                          title: t.config.directDnsDomainStrategy,
-                          presentChoice: (value) => value.displayName,
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  SwitchListTile(
-                    title: Text(t.config.enableDnsRouting),
-                    value: ref.watch(ConfigOptions.enableDnsRouting),
-                    onChanged: ref.watch(ConfigOptions.enableDnsRouting.notifier).update,
-                  ),
-                  
-                  // ... بقیه کدهای شما بدون تغییر ...
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
+  TaskEither<ConfigOptionFailure, SingboxConfigOption> getFullSingboxConfigOption() {
+    return exceptionHandler(
+      () async {
+        return right(await getConfigOptions());
+      },
+      ConfigOptionUnexpectedFailure.new,
     );
   }
+}
+
+
+class ConfigOptions {
+  static final autoSelectDns = PreferencesNotifier.create<bool, bool>(
+    "auto-select-dns",
+    true,
+  );
+
+  // بقیه گزینه‌های شما اینجا قرار می‌گیرند...
+  static final serviceMode = PreferencesNotifier.create<ServiceMode, String>("service-mode", ServiceMode.defaultMode, mapFrom: (value) => ServiceMode.choices.firstWhere((e) => e.key == value), mapTo: (value) => value.key);
+  static final region = PreferencesNotifier.create<Region, String>("region", Region.other, mapFrom: Region.values.byName, mapTo: (value) => value.name);
+  static final useXrayCoreWhenPossible = PreferencesNotifier.create<bool, bool>("use-xray-core-when-possible", false);
+  static final blockAds = PreferencesNotifier.create<bool, bool>("block-ads", false);
+  static final logLevel = PreferencesNotifier.create<LogLevel, String>("log-level", LogLevel.warn, mapFrom: LogLevel.values.byName, mapTo: (value) => value.name);
+  static final resolveDestination = PreferencesNotifier.create<bool, bool>("resolve-destination", false);
+  static final ipv6Mode = PreferencesNotifier.create<IPv6Mode, String>("ipv6-mode", IPv6Mode.disable, mapFrom: (value) => IPv6Mode.values.firstWhere((e) => e.key == value), mapTo: (value) => value.key);
+  static final remoteDnsAddress = PreferencesNotifier.create<String, String>("remote-dns-address", "udp://1.1.1.1");
+  static final remoteDnsDomainStrategy = PreferencesNotifier.create<DomainStrategy, String>("remote-dns-domain-strategy", DomainStrategy.auto, mapFrom: (value) => DomainStrategy.values.firstWhere((e) => e.key == value), mapTo: (value) => value.key);
+  static final directDnsAddress = PreferencesNotifier.create<String, String>("direct-dns-address", "udp://1.1.1.1");
+  static final directDnsDomainStrategy = PreferencesNotifier.create<DomainStrategy, String>("direct-dns-domain-strategy", DomainStrategy.auto, mapFrom: (value) => DomainStrategy.values.firstWhere((e) => e.key == value), mapTo: (value) => value.key);
+  // ... بقیه گزینه‌ها
+
+  static final singboxConfigOptions = FutureProvider<SingboxConfigOption>(
+    (ref) async {
+      final autoSelect = ref.watch(autoSelectDns);
+      String remoteDnsValue;
+      String directDnsValue;
+
+      if (autoSelect) {
+        final dnsRepo = ref.read(dnsRepositoryProvider);
+        final fastestDns = await dnsRepo.findFastestDns();
+        remoteDnsValue = "udp://$fastestDns"; // ensure format is correct
+        directDnsValue = "udp://$fastestDns";
+      } else {
+        remoteDnsValue = ref.watch(remoteDnsAddress);
+        directDnsValue = ref.watch(directDnsAddress);
+      }
+
+      final mode = ref.watch(serviceMode);
+      return SingboxConfigOption(
+        logLevel: ref.watch(logLevel),
+        remoteDnsAddress: remoteDnsValue,
+        directDnsAddress: directDnsValue,
+        // ... تمام گزینه‌های دیگر را اینجا قرار دهید
+        region: ref.watch(region).name,
+        blockAds: ref.watch(blockAds),
+        useXrayCoreWhenPossible: ref.watch(useXrayCoreWhenPossible),
+        executeConfigAsIs: false,
+        resolveDestination: ref.watch(resolveDestination),
+        ipv6Mode: ref.watch(ipv6Mode),
+        remoteDnsDomainStrategy: ref.watch(remoteDnsDomainStrategy),
+        directDnsDomainStrategy: ref.watch(directDnsDomainStrategy),
+        mixedPort: 2334,
+        tproxyPort: 2335,
+        localDnsPort: 6450,
+        tunImplementation: TunImplementation.gvisor,
+        mtu: 9000,
+        strictRoute: true,
+        connectionTestUrl: "http://cp.cloudflare.com",
+        urlTestInterval: const Duration(minutes: 10),
+        enableClashApi: true,
+        clashApiPort: 6756,
+        enableTun: mode == ServiceMode.tun,
+        setSystemProxy: mode == ServiceMode.systemProxy,
+        rules: [],
+      );
+    },
+  );
 }
